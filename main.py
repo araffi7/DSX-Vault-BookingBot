@@ -76,11 +76,19 @@ async def log_action(text):
     if ch:
         await ch.send(text)
 
-# ---------------- 🧠 NEW: MESSAGE RECOVERY FIX ----------------
+# ---------------- 🧠 TEMP MESSAGE HELPER (NEW) ----------------
+
+async def send_temporary_message(channel, content, delay=60):
+    msg = await channel.send(content)
+
+    # Log + auto delete
+    await log_action(f"⏰ Reminder: {content}")
+    await msg.delete(delay=delay)
+
+# ---------------- CALENDAR MESSAGE RECOVERY ----------------
 
 async def get_or_create_calendar_message(channel):
 
-    # 1) Supabase check
     res = supabase.table("settings") \
         .select("value") \
         .eq("key", "calendar_msg") \
@@ -88,14 +96,12 @@ async def get_or_create_calendar_message(channel):
 
     msg_id = res[0]["value"] if res else None
 
-    # 2) try fetch stored message
     if msg_id:
         try:
             return await channel.fetch_message(int(msg_id))
         except:
             pass
 
-    # 3) fallback: last bot message in channel
     async for msg in channel.history(limit=50):
         if msg.author == bot.user:
             return msg
@@ -206,7 +212,7 @@ class SlotView(discord.ui.View):
             for s in SLOTS:
                 self.add_item(SlotButton(d, s, (d, s) in bookings))
 
-# ---------------- CALENDAR UPDATE (FIXED) ----------------
+# ---------------- CALENDAR UPDATE ----------------
 
 async def update_calendar():
 
@@ -229,7 +235,6 @@ async def update_calendar():
                 "key": "calendar_msg",
                 "value": str(msg.id)
             }).execute()
-
             return
 
         supabase.table("settings").upsert({
@@ -271,18 +276,40 @@ async def reminder_loop():
 
         ch = bot.get_channel(CHANNEL_ID)
 
+        # 1 HOUR
         if not r["reminded_60"] and start - timedelta(hours=1) <= now_de:
-            await ch.send(f"⏰ @everyone 1h: {day} {slot} (<@{uid}>)")
+
+            await send_temporary_message(
+                ch,
+                f"⏰ @everyone 1h: {day} {slot} (<@{uid}>)",
+                delay=60
+            )
+
             supabase.table("bookings").update({"reminded_60": True}).eq("day", day).eq("slot", slot).execute()
 
+        # 30 MIN
         if not r["reminded_30"] and start - timedelta(minutes=30) <= now_de:
-            await ch.send(f"⏰ @everyone 30m: {day} {slot} (<@{uid}>)")
+
+            await send_temporary_message(
+                ch,
+                f"⏰ @everyone 30m: {day} {slot} (<@{uid}>)",
+                delay=60
+            )
+
             supabase.table("bookings").update({"reminded_30": True}).eq("day", day).eq("slot", slot).execute()
 
+        # START
         if not r["reminded_start"] and start <= now_de:
-            await ch.send(f"🚀 START: {day} {slot} (<@{uid}>)")
+
+            await send_temporary_message(
+                ch,
+                f"🚀 START: {day} {slot} (<@{uid}>)",
+                delay=120
+            )
+
             supabase.table("bookings").update({"reminded_start": True}).eq("day", day).eq("slot", slot).execute()
 
+        # AUTO RELEASE
         if end <= now_de:
             supabase.table("bookings").delete().eq("day", day).eq("slot", slot).execute()
             await log_action(f"♻️ Auto release {day} {slot}")
@@ -291,6 +318,7 @@ async def reminder_loop():
 
 @bot.event
 async def on_ready():
+
     print(f"Bot online as {bot.user}")
 
     await update_calendar()

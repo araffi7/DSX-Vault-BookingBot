@@ -134,7 +134,7 @@ async def log_action(text):
 # ---------------- BOOKING MESSAGE ----------------
 
 async def send_calendar():
-    channel = bot.get_channel(SLOT_CHANNEL_ID)
+    channel = bot.get_channel(CHANNEL_ID)
 
     if not channel:
         print("Channel not found")
@@ -165,7 +165,7 @@ async def reminder_loop():
                 start = datetime.fromtimestamp(start_ts)
                 end = datetime.fromtimestamp(end_ts)
 
-                channel = bot.get_channel(SLOT_CHANNEL_ID)
+                channel = bot.get_channel(CHANNEL_ID)
 
                 # 60 min reminder
                 if not r60 and start - timedelta(hours=1) <= now:

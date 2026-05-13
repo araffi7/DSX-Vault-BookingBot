@@ -60,7 +60,6 @@ def get_slot_datetime(day_name, slot):
     hour = int(slot.split(":")[0])
     minute = int(slot.split(":")[1].split("-")[0])
 
-    # ingame -> german (+4h)
     real_hour = (hour + 4) % 24
 
     return target_date.replace(
@@ -76,6 +75,32 @@ async def log_action(text):
     ch = bot.get_channel(LOG_CHANNEL_ID)
     if ch:
         await ch.send(text)
+
+# ---------------- 🧠 NEW: MESSAGE RECOVERY FIX ----------------
+
+async def get_or_create_calendar_message(channel):
+
+    # 1) Supabase check
+    res = supabase.table("settings") \
+        .select("value") \
+        .eq("key", "calendar_msg") \
+        .execute().data
+
+    msg_id = res[0]["value"] if res else None
+
+    # 2) try fetch stored message
+    if msg_id:
+        try:
+            return await channel.fetch_message(int(msg_id))
+        except:
+            pass
+
+    # 3) fallback: last bot message in channel
+    async for msg in channel.history(limit=50):
+        if msg.author == bot.user:
+            return msg
+
+    return None
 
 # ---------------- CALENDAR ----------------
 
@@ -181,7 +206,7 @@ class SlotView(discord.ui.View):
             for s in SLOTS:
                 self.add_item(SlotButton(d, s, (d, s) in bookings))
 
-# ---------------- CALENDAR UPDATE ----------------
+# ---------------- CALENDAR UPDATE (FIXED) ----------------
 
 async def update_calendar():
 
@@ -189,27 +214,36 @@ async def update_calendar():
     if not channel:
         return
 
-    msg_id = supabase.table("settings").select("*").eq("key", "calendar_msg").execute().data
-
     text, bookings = await build_calendar()
     view = SlotView(bookings)
 
-    if msg_id:
+    msg = await get_or_create_calendar_message(channel)
 
+    if msg:
         try:
-            msg_id = int(msg_id[0]["value"])
-            msg = await channel.fetch_message(msg_id)
             await msg.edit(content=text, view=view)
-            return
         except:
-            pass
+            msg = await channel.send(content=text, view=view)
 
-    msg = await channel.send(text, view=view)
+            supabase.table("settings").upsert({
+                "key": "calendar_msg",
+                "value": str(msg.id)
+            }).execute()
 
-    supabase.table("settings").upsert({
-        "key": "calendar_msg",
-        "value": str(msg.id)
-    }).execute()
+            return
+
+        supabase.table("settings").upsert({
+            "key": "calendar_msg",
+            "value": str(msg.id)
+        }).execute()
+
+    else:
+        msg = await channel.send(content=text, view=view)
+
+        supabase.table("settings").upsert({
+            "key": "calendar_msg",
+            "value": str(msg.id)
+        }).execute()
 
 # ---------------- LOOP ----------------
 
@@ -257,7 +291,6 @@ async def reminder_loop():
 
 @bot.event
 async def on_ready():
-
     print(f"Bot online as {bot.user}")
 
     await update_calendar()

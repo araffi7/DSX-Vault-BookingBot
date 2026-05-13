@@ -50,7 +50,7 @@ async def init_db():
 # ---------------- TIME LOGIC ----------------
 
 def get_slot_datetime(day_name, slot):
-    now = datetime.now()
+    now = datetime.utcnow() + timedelta(hours=2)
 
     target_weekday = DAYS.index(day_name)
     current_weekday = now.weekday()
@@ -180,7 +180,7 @@ async def send_calendar():
     for row in rows:
         bookings[(row[0], row[1])] = row[2]
 
-    now = datetime.now()
+    now = datetime.utcnow() + timedelta(hours=2)
 
     german_time = now.strftime("%H:%M")
     ingame_time = (now - timedelta(hours=4)).strftime("%H:%M")
@@ -220,7 +220,7 @@ async def send_calendar():
 
 @tasks.loop(seconds=30)
 async def reminder_loop():
-    now = datetime.now()
+    now = datetime.utcnow() + timedelta(hours=2)
 
     async with aiosqlite.connect("slots.db") as db:
         async with db.execute("SELECT * FROM bookings") as cursor:

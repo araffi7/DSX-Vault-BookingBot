@@ -1,18 +1,16 @@
 import discord
 from discord.ext import commands, tasks
 import aiosqlite
-import json
 from datetime import datetime, timedelta
 from keep_alive import keep_alive
 
 # ---------------- CONFIG ----------------
 
-with open("config.json", "r") as f:
-    config = json.load(f)
+import os
 
-TOKEN = config["token"]
-SLOT_CHANNEL_ID = config["channel_id"]
-LOG_CHANNEL_ID = config["log_channel_id"]
+TOKEN = os.getenv("TOKEN")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
+LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID"))
 
 GERMANY = datetime.now().astimezone().tzinfo
 

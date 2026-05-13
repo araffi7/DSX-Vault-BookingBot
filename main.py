@@ -140,12 +140,41 @@ async def send_calendar():
         print("Channel not found")
         return
 
-    await channel.purge()
+    async with aiosqlite.connect("slots.db") as db:
+        async with db.execute("SELECT * FROM bookings") as cursor:
+            rows = await cursor.fetchall()
+
+    bookings = {}
+    for row in rows:
+        bookings[(row[0], row[1])] = row[2]
+
+    text = "🎯 **Vault Slot Calendar**\n"
+    text += f"📅 Current Week: {datetime.now().strftime('%d.%m.%Y')}\n\n"
+
+    for day in DAYS:
+        text += f"## {day}\n"
+
+        for slot in SLOTS:
+            key = (day, slot)
+
+            if key in bookings:
+                user_id = bookings[key]
+                text += f"🔴 `{slot}` → Booked by <@{user_id}>\n"
+            else:
+                text += f"🟢 `{slot}` → Free\n"
+
+        text += "\n"
 
     view = SlotView()
 
+    messages = [msg async for msg in channel.history(limit=10)]
+
+    for msg in messages:
+        if msg.author == bot.user:
+            await msg.delete()
+
     await channel.send(
-        "🎯 **Vault Slot Calendar**",
+        text,
         view=view
     )
 

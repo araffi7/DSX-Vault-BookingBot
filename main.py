@@ -78,51 +78,83 @@ def get_slot_datetime(day_name, slot):
 # ---------------- UI BUTTON ----------------
 
 class SlotButton(discord.ui.Button):
-    def __init__(self, day, slot):
-        super().__init__(
-            label=f"{day} {slot}",
-            style=discord.ButtonStyle.success,
-            custom_id=f"{day}-{slot}"
-        )
+    def __init__(self, day, slot, booked=False):
         self.day = day
         self.slot = slot
+
+        super().__init__(
+            label=f"{day[:3]} {slot}",
+            style=discord.ButtonStyle.danger if booked else discord.ButtonStyle.success,
+            custom_id=f"{day}-{slot}"
+        )
 
     async def callback(self, interaction: discord.Interaction):
         user_id = interaction.user.id
 
-        start = get_slot_datetime(self.day, self.slot)
-        end = start + timedelta(minutes=30)
-
         async with aiosqlite.connect("slots.db") as db:
-            await db.execute("""
-                INSERT INTO bookings
-                (day, slot, user_id, start_ts, end_ts)
-                VALUES (?, ?, ?, ?, ?)
-            """, (
-                self.day,
-                self.slot,
-                user_id,
-                int(start.timestamp()),
-                int(end.timestamp())
-            ))
-            await db.commit()
 
-        await log_action(f"📌 Booked: {self.day} {self.slot} by <@{user_id}>")
+            # Prüfen ob Slot existiert
+            async with db.execute(
+                "SELECT * FROM bookings WHERE day=? AND slot=?",
+                (self.day, self.slot)
+            ) as cursor:
+                existing = await cursor.fetchone()
 
-        await interaction.response.send_message(
-            f"Slot booked: {self.day} {self.slot}",
-            ephemeral=True
-        )
+            # Slot freigeben wenn selber Nutzer
+            if existing and existing[2] == user_id:
+                await db.execute(
+                    "DELETE FROM bookings WHERE day=? AND slot=?",
+                    (self.day, self.slot)
+                )
+
+                await db.commit()
+
+                await log_action(
+                    f"❌ Released: {self.day} {self.slot} by <@{user_id}>"
+                )
+
+            # Bereits von anderem gebucht
+            elif existing:
+                await interaction.response.defer()
+                return
+
+            # Neu buchen
+            else:
+                start = get_slot_datetime(self.day, self.slot)
+                end = start + timedelta(minutes=30)
+
+                await db.execute("""
+                    INSERT INTO bookings
+                    (day, slot, user_id, start_ts, end_ts,
+                    reminded_60, reminded_30, reminded_start)
+                    VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+                """, (
+                    self.day,
+                    self.slot,
+                    user_id,
+                    int(start.timestamp()),
+                    int(end.timestamp())
+                ))
+
+                await db.commit()
+
+                await log_action(
+                    f"📌 Booked: {self.day} {self.slot} by <@{user_id}>"
+                )
+
+        await send_calendar()
+        await interaction.response.defer()
 
 # ---------------- VIEW ----------------
 
 class SlotView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, bookings):
         super().__init__(timeout=None)
 
         for day in DAYS:
             for slot in SLOTS:
-                self.add_item(SlotButton(day, slot))
+                booked = (day, slot) in bookings
+                self.add_item(SlotButton(day, slot, booked))
 
 # ---------------- LOG ----------------
 
@@ -148,8 +180,15 @@ async def send_calendar():
     for row in rows:
         bookings[(row[0], row[1])] = row[2]
 
+    now = datetime.now()
+
+    german_time = now.strftime("%H:%M")
+    ingame_time = (now - timedelta(hours=4)).strftime("%H:%M")
+
     text = "🎯 **Vault Slot Calendar**\n"
-    text += f"📅 Current Week: {datetime.now().strftime('%d.%m.%Y')}\n\n"
+    text += f"📅 Current Week: {now.strftime('%d.%m.%Y')}\n"
+    text += f"🇩🇪 German Time: `{german_time}`\n"
+    text += f"🎮 Ingame Time: `{ingame_time}`\n\n"
 
     for day in DAYS:
         text += f"## {day}\n"
@@ -165,7 +204,7 @@ async def send_calendar():
 
         text += "\n"
 
-    view = SlotView()
+    view = SlotView(bookings)
 
     messages = [msg async for msg in channel.history(limit=10)]
 
@@ -177,7 +216,6 @@ async def send_calendar():
         text,
         view=view
     )
-
 # ---------------- REMINDER LOOP ----------------
 
 @tasks.loop(seconds=30)

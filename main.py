@@ -270,21 +270,100 @@ async def reminder_loop():
 
         ch = bot.get_channel(CHANNEL_ID)
 
+        # ---------------- 1 HOUR REMINDER ----------------
+
         if not r["reminded_60"] and start - timedelta(hours=1) <= now_de:
-            await ch.send(f"⏰ @everyone 1h: {day} {slot} (<@{uid}>)")
-            supabase.table("bookings").update({"reminded_60": True}).eq("day", day).eq("slot", slot).execute()
+
+            reminder_text = (
+                f"⏰ @everyone Vault Slot in 1 hour\n"
+                f"📅 {day}\n"
+                f"🕒 {slot}\n"
+                f"👤 <@{uid}>"
+            )
+
+            msg = await ch.send(reminder_text)
+
+            # AUTO DELETE AFTER 120s
+            await msg.delete(delay=120)
+
+            # LOG CHANNEL
+            await log_action(
+                f"⏰ 1h Reminder sent for {day} {slot} (<@{uid}>)"
+            )
+
+            supabase.table("bookings") \
+                .update({"reminded_60": True}) \
+                .eq("day", day) \
+                .eq("slot", slot) \
+                .execute()
+
+        # ---------------- 30 MIN REMINDER ----------------
 
         if not r["reminded_30"] and start - timedelta(minutes=30) <= now_de:
-            await ch.send(f"⏰ @everyone 30m: {day} {slot} (<@{uid}>)")
-            supabase.table("bookings").update({"reminded_30": True}).eq("day", day).eq("slot", slot).execute()
+
+            reminder_text = (
+                f"⏰ @everyone Vault Slot in 30 minutes\n"
+                f"📅 {day}\n"
+                f"🕒 {slot}\n"
+                f"👤 <@{uid}>"
+            )
+
+            msg = await ch.send(reminder_text)
+
+            # AUTO DELETE AFTER 120s
+            await msg.delete(delay=120)
+
+            # LOG CHANNEL
+            await log_action(
+                f"⏰ 30m Reminder sent for {day} {slot} (<@{uid}>)"
+            )
+
+            supabase.table("bookings") \
+                .update({"reminded_30": True}) \
+                .eq("day", day) \
+                .eq("slot", slot) \
+                .execute()
+
+        # ---------------- START REMINDER ----------------
 
         if not r["reminded_start"] and start <= now_de:
-            await ch.send(f"🚀 START: {day} {slot} (<@{uid}>)")
-            supabase.table("bookings").update({"reminded_start": True}).eq("day", day).eq("slot", slot).execute()
+
+            reminder_text = (
+                f"🚀 @everyone Vault Slot STARTING NOW\n"
+                f"📅 {day}\n"
+                f"🕒 {slot}\n"
+                f"👤 <@{uid}>"
+            )
+
+            msg = await ch.send(reminder_text)
+
+            # AUTO DELETE AFTER 120s
+            await msg.delete(delay=120)
+
+            # LOG CHANNEL
+            await log_action(
+                f"🚀 Start Reminder sent for {day} {slot} (<@{uid}>)"
+            )
+
+            supabase.table("bookings") \
+                .update({"reminded_start": True}) \
+                .eq("day", day) \
+                .eq("slot", slot) \
+                .execute()
+
+        # ---------------- AUTO RELEASE ----------------
 
         if end <= now_de:
-            supabase.table("bookings").delete().eq("day", day).eq("slot", slot).execute()
-            await log_action(f"♻️ Auto release {day} {slot}")
+
+            supabase.table("bookings") \
+                .delete() \
+                .eq("day", day) \
+                .eq("slot", slot) \
+                .execute()
+
+            await log_action(
+                f"♻️ Auto release {day} {slot}"
+            )
 
 # ---------------- READY ----------------
 

@@ -338,7 +338,7 @@ async def reminder_loop():
             msg = await ch.send(reminder_text)
 
             # AUTO DELETE AFTER 120s
-           bot.loop.create_task(msg.delete(delay=60))
+            bot.loop.create_task(msg.delete(delay=60))
 
             # LOG CHANNEL
             await log_action(
